@@ -27,8 +27,14 @@ export function triggerAppChange() {
   // Call reroute with no arguments, intentionally
   return reroute();
 }
-
+/**
+ * 主要的路由挂载函数
+ * @param {*} pendingPromises 处于pending的promise
+ * @param {*} eventArguments ⌚️参数
+ */
 export function reroute(pendingPromises = [], eventArguments) {
+  // 加个锁 如果处于app改变状态 则将需要重新渲染的参数存储起来，
+  // 等上一次的渲染完成就继续渲染
   if (appChangeUnderway) {
     return new Promise((resolve, reject) => {
       peopleWaitingOnAppChange.push({
@@ -39,21 +45,26 @@ export function reroute(pendingPromises = [], eventArguments) {
     });
   }
 
+  // 将微应用app做个分类，判断哪些是需要挂载的 以及卸载的
   const {
-    appsToUnload,
-    appsToUnmount,
-    appsToLoad,
-    appsToMount,
+    appsToUnload,// 将要删除加载资源的
+    appsToUnmount,// 将要卸载的
+    appsToLoad,//将要加载资源的
+    appsToMount,//将要挂载到dom节点上的
   } = getAppChanges();
+  // 将变化的app用一个数组存储起来 
   let appsThatChanged;
-
+  // 判断是否开始
   if (isStarted()) {
+    // 设置一个锁 表示正在处理中 以防数据混乱
     appChangeUnderway = true;
+    // 将全部变化的app 用concat 链接起来
     appsThatChanged = appsToUnload.concat(
       appsToLoad,
       appsToUnmount,
       appsToMount
     );
+    // 然后触发修改
     return performAppChanges();
   } else {
     appsThatChanged = appsToLoad;
@@ -95,16 +106,18 @@ export function reroute(pendingPromises = [], eventArguments) {
           getCustomEventDetail(true)
         )
       );
+      // 将删除资源的过程作为一个promise，
       const unloadPromises = appsToUnload.map(toUnloadPromise);
-
+      // 将取消挂载的app用promise表示，方便异步操作
       const unmountUnloadPromises = appsToUnmount
         .map(toUnmountPromise)
         .map((unmountPromise) => unmountPromise.then(toUnloadPromise));
-
+      // 将全部的卸载 取消挂载事件的promise 结合起来，然后统一处理 
+      // 卸载 取消挂载之后才挂载子应用
       const allUnmountPromises = unmountUnloadPromises.concat(unloadPromises);
-
+      // 用promise.all 等待全部的事件完成
       const unmountAllPromise = Promise.all(allUnmountPromises);
-
+      // 卸载 取消挂载事件完成之后 才进行挂载操作
       unmountAllPromise.then(() => {
         window.dispatchEvent(
           new CustomEvent(
@@ -117,6 +130,10 @@ export function reroute(pendingPromises = [], eventArguments) {
       /* We load and bootstrap apps while other apps are unmounting, but we
        * wait to mount the app until all apps are finishing unmounting
        */
+      /**
+       * 我们将加载子应用当其他子应用被卸载的时候，
+       * 但是我们会等到全部子应用完成卸载之后才挂载子应用
+       */
       const loadThenMountPromises = appsToLoad.map((app) => {
         return toLoadPromise(app).then((app) =>
           tryToBootstrapAndMount(app, unmountAllPromise)
@@ -127,8 +144,12 @@ export function reroute(pendingPromises = [], eventArguments) {
        * to be mounted. They each wait for all unmounting apps to finish up
        * before they mount.
        */
+      /**
+       * 这些已经加载的子应用只需要挂载就可以，
+       * 他们每一个等待全部卸载的自用用完成，在挂载之前
+       */
       const mountPromises = appsToMount
-        .filter((appToMount) => appsToLoad.indexOf(appToMount) < 0)
+        .filter((appToMount) => appsToLoad.indexOf(appToMount) < 0) // 排除了那些为加载的子应用
         .map((appToMount) => {
           return tryToBootstrapAndMount(appToMount, unmountAllPromise);
         });
@@ -138,12 +159,17 @@ export function reroute(pendingPromises = [], eventArguments) {
           throw err;
         })
         .then(() => {
-          /* Now that the apps that needed to be unmounted are unmounted, their DOM navigation
+          /* Now that th e apps that needed to be unmounted are unmounted, their DOM navigation
            * events (like hashchange or popstate) should have been cleaned up. So it's safe
            * to let the remaining captured event listeners to handle about the DOM event.
            */
+          /**
+           * 现在这些需要被卸载的子应用被卸载，他们的dom 导航节点
+           * 事件（比如说 hashchange 或 popstate） 应该被清除掉，所以这是安全的
+           * 去让剩下的捕获事件处理掉这些dom节点事件
+           */
           callAllEventListeners();
-
+          // 当全部挂载事件完成之后 执行完成的函数finishUpAndReturn
           return Promise.all(loadThenMountPromises.concat(mountPromises))
             .catch((err) => {
               pendingPromises.forEach((promise) => promise.reject(err));
@@ -208,7 +234,6 @@ export function reroute(pendingPromises = [], eventArguments) {
     pendingPromises.forEach((pendingPromise) => {
       callCapturedEventListeners(pendingPromise.eventArguments);
     });
-
     callCapturedEventListeners(eventArguments);
   }
 
