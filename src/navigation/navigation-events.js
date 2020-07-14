@@ -103,7 +103,11 @@ function patchedUpdateState(updateState, methodName) {
     return result;
   };
 }
-
+/**
+ * 主要是为了创建一个popstate Event 触发popstate
+ * @param {*} state 实际检查了一下  这个state 一般来说是null 或者是空字符 
+ * @param {*} originalMethodName "pushState", "replaceState"
+ */
 function createPopStateEvent(state, originalMethodName) {
   // https://github.com/single-spa/single-spa/issues/224 and https://github.com/single-spa/single-spa-angular/issues/49
   // We need a popstate event even though the browser doesn't do one by default when you call replaceState, so that
