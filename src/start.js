@@ -11,7 +11,8 @@ let started = false;
 export function start(opts) {
   // 通过一个全局变量存储是否开始
   started = true;
-  // 通过参数是否有url路由只读，设置路由只读
+  // 路由变化是否就会触发检查，如不设置，则urlRerouteOnly为false，每次触发pushState replaceState的时候就会触发检查子应用状态，
+  // 如果设置为true 则判断 触发事件后的前后路由是否相同来判断是否需要检查子应用状态
   if (opts && opts.urlRerouteOnly) {
     setUrlRerouteOnly(opts.urlRerouteOnly);
   }
@@ -21,6 +22,9 @@ export function start(opts) {
   }
 }
 
+/**
+ * 判断是否开始 通过一个私有变量来存储状态
+ */
 export function isStarted() {
   return started;
 }
